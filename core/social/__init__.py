@@ -383,6 +383,7 @@ class SocialYtdlpMixin:
 
             # 5. 平行提取所有潜在的关联图片 URL 列表
             image_urls = []
+            thumb_only = False
             if platform == "x" and tweet_data:
                 photos = tweet_data.get("photos", []) or []
                 for p in photos:
@@ -417,6 +418,9 @@ class SocialYtdlpMixin:
 
             if not image_urls and info:
                 self._extract_images_from_info(info, image_urls)
+                # 这批图片来自 yt-dlp 的 thumbnails（视频封面 / 作者头像），
+                # 视频下载失败时不能把它们当作图文内容发送。
+                thumb_only = bool(image_urls)
 
             # 6. 统一执行图片下载
             downloaded_images = []
@@ -442,6 +446,7 @@ class SocialYtdlpMixin:
             # 7. 精准分流下载视频
             local_file_path = None
             download_info = {}
+            video_failed_msg = None
             if has_video:
                 logger.info(
                     "[social_parser] 检测到视频内容，启动"
@@ -509,7 +514,13 @@ class SocialYtdlpMixin:
                     has_video = False
                     local_file_path = None
                     download_info = {}
-                    if info:
+                    video_failed_msg = str(e)[:150]
+                    if thumb_only:
+                        # thumbnails 只是视频封面 / 作者头像，直接丢弃，
+                        # 避免把头像当成图文内容发给用户。
+                        image_urls.clear()
+                        downloaded_images = []
+                    elif info:
                         self._extract_images_from_info(info, image_urls)
                         downloaded_images = []
                         for img_url in image_urls[:9]:
@@ -537,6 +548,19 @@ class SocialYtdlpMixin:
                             f" 过大，超出 {self.max_video_size_mb}MB 下载限制"
                         )
                         return
+                    # 元数据可能缺失（Instagram / 直链下载通道不会带回
+                    # duration 与 width/height），对实际文件做一次探测补全。
+                    if not download_info.get("duration") or not (
+                        download_info.get("width") and download_info.get("height")
+                    ):
+                        probe = await asyncio.to_thread(
+                            self._sp_probe_media_file, local_file_path
+                        )
+                        if not download_info.get("duration") and probe.get("duration"):
+                            download_info["duration"] = probe["duration"]
+                        if not download_info.get("width") and probe.get("width"):
+                            download_info["width"] = probe["width"]
+                            download_info["height"] = probe["height"]
 
             # 纯视频帖子不发送图片（封面图）
             if has_video and local_file_path:
@@ -576,7 +600,14 @@ class SocialYtdlpMixin:
                         clean_desc = clean_desc[:400] + "..."
                     plain_text += f"\n内容: {clean_desc}"
             else:
-                plain_text = f"[{platform_name}] 解析成功\n作者: {uploader}"
+                headline = (
+                    f"[{platform_name}] 视频下载失败"
+                    if video_failed_msg
+                    else f"[{platform_name}] 解析成功"
+                )
+                plain_text = f"{headline}\n作者: {uploader}"
+                if video_failed_msg:
+                    plain_text += f"\n原因: {video_failed_msg}"
                 if text_content:
                     clean_text = text_content.strip()
                     if len(clean_text) > 600:
@@ -1853,6 +1884,40 @@ class SocialYtdlpMixin:
         except Exception:
             pass
         return status
+
+    def _sp_probe_media_file(self, path: str) -> dict:
+        """用 ffmpeg 探测本地媒体文件的时长与分辨率。
+
+        部分平台（Instagram 等）的 yt-dlp 元数据缺少 duration / width / height，
+        直链下载通道也不会带回这两个字段，这里对实际下载的文件做一次兜底探测。
+        """
+        ffmpeg = self.ffmpeg_exe or "ffmpeg"
+        try:
+            res = subprocess.run(
+                [ffmpeg, "-i", path],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except Exception as e:
+            logger.warning(f"[social_parser] ffmpeg 探测媒体信息失败: {e}")
+            return {}
+        output = (res.stderr or "") + (res.stdout or "")
+        duration = 0.0
+        d_match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", output)
+        if d_match:
+            duration = (
+                int(d_match.group(1)) * 3600
+                + int(d_match.group(2)) * 60
+                + float(d_match.group(3))
+            )
+        width = None
+        height = None
+        v_match = re.search(r"Video:.*?(\d{2,5})x(\d{2,5})", output)
+        if v_match:
+            width = int(v_match.group(1))
+            height = int(v_match.group(2))
+        return {"duration": int(round(duration)), "width": width, "height": height}
 
     def _sp_format_duration(self, seconds: float) -> str:
         if not seconds:
