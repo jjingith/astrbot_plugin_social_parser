@@ -85,6 +85,7 @@ AstrBot 链接解析插件：自动识别聊天中的视频 / 图文链接，下
 | `xhs_settings` | 小红书：原图、大图转文件阈值、摘要模式 |
 | `weibo_settings` | 微博：媒体数量上限、原图、合并发送、Cookie |
 | `twitter_settings` | X：媒体数量上限、合并发送 |
+| `instagram_settings` | Instagram：第三方解析中转地址（可选项，见「Cookie 与代理」） |
 | `youtube_settings` | YouTube：最高分辨率、时长上限、Cookie、合并发送 |
 | `general_settings` | 通用：重试次数、表情回应、字体、最大视频体积、错误通知 |
 | `group_filter` | 群黑白名单 |
@@ -111,6 +112,13 @@ Cookie 解析优先级（微博 / X / YouTube / Instagram / TikTok）：
 2. 若未配置或文件缺失，回退到插件目录 `cookies/<平台>/cookies.txt`。
 
 - 微博在没有配置 Cookie 时会先尝试生成访客 Cookie 解析公开内容。
+- **Instagram 必须先有登录态**：官方通道对匿名请求一律返回 `login_required`，未配置 Cookie 时
+  只能解析出「Cookies 缺失」类的失败结果。两个可选方案：
+  1. 在 `instagram_settings.mirror_url` 中填写第三方解析 / 中转服务地址
+     （`{url}` 为帖子链接占位符，`{code}` 为帖子短码，未含占位符时会自动以 `?url=` 追加），
+     插件会在尝试 Cookie 之前优先走它，返回的 JSON / HTML 中会自动提取文案与媒体直链；
+  2. 手动放置 `cookies/instagram/cookies.txt`。注意：用主账号登录态高频解析容易触发风控封号，
+     若要用此方案建议使用一次性小号。
 - 插件目录下的 `cookies/` 已在 `.gitignore` 中排除，**请勿把个人 Cookie 提交到仓库**。
 - 代理示例：`http://127.0.0.1:7896`。
 

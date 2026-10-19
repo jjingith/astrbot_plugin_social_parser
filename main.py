@@ -256,6 +256,12 @@ class SocialMediaParser(
             self._get_config_value("twitter_settings.merge_send", False)
         )
 
+        # Instagram 配置：官方通道对匿名请求一律返回 login_required，
+        # 这里只保留一个可选的第三方解析中转地址，由 core/social 链路消费。
+        self.ig_mirror_url = str(
+            self._get_config_value("instagram_settings.mirror_url", "")
+        ).strip()
+
         # YouTube 配置
         _youtube_height = (
             str(self._get_config_value("youtube_settings.max_height", "1080P"))

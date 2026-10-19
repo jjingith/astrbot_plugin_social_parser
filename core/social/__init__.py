@@ -1,6 +1,7 @@
 """social_parser 原有 yt-dlp 解析逻辑（X/YouTube/Instagram/TikTok/微博），以 Mixin 形式并入 link_resolver 架构。"""
 
 import asyncio
+import json
 import os
 import re
 import shutil
@@ -8,6 +9,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 import urllib3
@@ -56,6 +58,8 @@ class SocialYtdlpMixin:
         # 配置面板写入的 Cookie 文件映射（平台 -> 数据目录下的文件路径），
         # 由 main.py 的 _refresh_config() 填充；未配置时为插件目录下的默认路径。
         self._sp_configured_cookies = {}
+        # Instagram 可选第三方解析中转地址，由 main.py 的 _refresh_config() 填充。
+        self.ig_mirror_url = ""
         logger.info(
             f"[social_parser] v4.0.0 插件已加载 | FFmpeg 路径:"
             f" {self.ffmpeg_exe or '未找到'} | 代理: {self.proxy_url or '未启用'}"
@@ -273,9 +277,14 @@ class SocialYtdlpMixin:
                                 tweet_data["photos"] = existing
             elif platform == "instagram":
                 if not info:
+                    # 优先走用户配置的第三方中转；未配置或失败时再落到 cookies 链路。
                     ins_data = await asyncio.to_thread(
-                        self._parse_instagram_fallback, url, cookie_path
+                        self._parse_instagram_mirror, url
                     )
+                    if not ins_data:
+                        ins_data = await asyncio.to_thread(
+                            self._parse_instagram_fallback, url, cookie_path
+                        )
             elif platform == "weibo":
                 logger.info("[social_parser] 切入微博 API 专属解析管道...")
                 weibo_data = await asyncio.to_thread(
@@ -324,9 +333,17 @@ class SocialYtdlpMixin:
                     info.get("uploader") or info.get("channel") or "未知作者"
                 )
             else:
+                hint = ""
+                if platform == "instagram":
+                    hint = (
+                        "。Instagram 官方通道对匿名请求一律返回 login_required，"
+                        "可在插件配置「Instagram 设置」中填写第三方解析中转地址，"
+                        "或改用登录态 Cookie 解析"
+                    )
                 raise Exception(
                     f"该 {platform_name}"
                     " 链接受网络限制或已被删除，所有节点均无法获取有效元数据"
+                    f"{hint}"
                 )
 
             # 4. 判断是否存在可下载的视频流
@@ -335,6 +352,10 @@ class SocialYtdlpMixin:
             if platform == "weibo" and weibo_data and weibo_data.get("video_url"):
                 has_video = True
                 weibo_direct_video = weibo_data.get("video_url")
+            elif (
+                platform == "instagram" and ins_data and ins_data.get("video_url")
+            ):
+                has_video = True
             elif platform == "x" and tweet_data and tweet_data.get("video_url"):
                 has_video = True
             elif platform in ("youtube", "tiktok") and info:
@@ -451,6 +472,23 @@ class SocialYtdlpMixin:
                     elif platform == "douyin" and douyin_data and douyin_data.get("video_url"):
                         local_file_path = await asyncio.to_thread(
                             self._download_direct_file, douyin_data["video_url"], ".mp4"
+                        )
+                        download_info = {
+                            "title": text_content[:30],
+                            "uploader": uploader,
+                            "duration": 0,
+                        }
+                    elif (
+                        platform == "instagram"
+                        and ins_data
+                        and ins_data.get("video_url")
+                    ):
+                        local_file_path = await asyncio.to_thread(
+                            self._download_direct_file,
+                            ins_data["video_url"],
+                            ".mp4",
+                            "https://www.instagram.com/",
+                            True,
                         )
                         download_info = {
                             "title": text_content[:30],
@@ -1134,9 +1172,13 @@ class SocialYtdlpMixin:
             return filename, info
 
     def _download_direct_file(
-        self, url: str, suffix: str = ".mp4", referer: str = "https://weibo.com/"
+        self,
+        url: str,
+        suffix: str = ".mp4",
+        referer: str = "https://weibo.com/",
+        use_proxy: bool = False,
     ) -> str:
-        """直接下载直链文件（微博 / 抖音 / X 视频）"""
+        """直接下载直链文件（微博 / 抖音 / X / Instagram 视频）"""
         ts = int(time.time())
         temp_dir = tempfile.gettempdir()
         out_path = os.path.join(temp_dir, f"direct_{ts}{suffix}")
@@ -1145,7 +1187,11 @@ class SocialYtdlpMixin:
             "User-Agent": self.user_agent,
             "Referer": referer,
         }
-        proxies = None  # 直链不走代理，视情况可改
+        proxies = (
+            {"http": self.proxy_url, "https": self.proxy_url}
+            if (use_proxy and self.proxy_url)
+            else None
+        )
 
         resp = requests.get(
             url,
@@ -1389,7 +1435,197 @@ class SocialYtdlpMixin:
             media_id = media_id * 64 + idx
         return media_id
 
-    def _parse_instagram_fallback(self, url: str, cookie_path: str) -> dict:
+    def _parse_instagram_mirror(self, url: str) -> dict | None:
+        """走用户配置的第三方解析中转地址（可选通道）。
+
+        Instagram 官方通道对匿名请求一律返回 login_required，而登录态 cookies
+        又容易导致账号被封。若配置了 instagram_settings.mirror_url，这里会优先
+        走它：地址中可用 {url}（帖子链接）或 {code}（帖子短码）作为占位符，未含
+        占位符时自动以 ?url= 形式附加。返回体按 JSON 优先、HTML 兜底解析。
+        未配置中转地址时返回 None，不影响原有 cookies 链路。
+        """
+        mirror = str(getattr(self, "ig_mirror_url", "") or "").strip()
+        if not mirror:
+            return None
+        match = re.search(r"/(?:p|reel|tv|stories|share/p)/([^/?#\s]+)", url)
+        shortcode = match.group(1) if match else ""
+        target = mirror.replace("{url}", quote(url, safe="")).replace(
+            "{code}", shortcode
+        )
+        if "{url}" not in mirror and "{code}" not in mirror:
+            target += ("&" if "?" in target else "?") + "url=" + quote(url, safe="")
+        proxies = (
+            {"http": self.proxy_url, "https": self.proxy_url}
+            if self.proxy_url
+            else None
+        )
+        headers = {
+            "User-Agent": self.user_agent,
+            "Accept": "application/json, text/html;q=0.9, */*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        }
+        try:
+            resp = requests.get(
+                target, headers=headers, proxies=proxies, timeout=20, verify=False
+            )
+            resp.raise_for_status()
+            resp.encoding = resp.apparent_encoding or resp.encoding
+            body = resp.text
+        except Exception as e:
+            logger.warning(f"[social_parser] Instagram 中转通道请求失败: {e}")
+            return None
+
+        def _walk(node, cb):
+            if isinstance(node, dict):
+                cb(node)
+                for item in node.values():
+                    _walk(item, cb)
+            elif isinstance(node, list):
+                for item in node:
+                    _walk(item, cb)
+
+        text_keys = ("caption", "description", "text", "title", "content")
+        user_keys = (
+            "username",
+            "uploader",
+            "author",
+            "user_name",
+            "nickname",
+            "full_name",
+        )
+        media_exts = (
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+            ".heic",
+            ".gif",
+            ".mp4",
+            ".mov",
+            ".m3u8",
+        )
+        text, uploader, video_url = "", "", ""
+        images, urls = [], []
+
+        data = None
+        if "json" in (resp.headers.get("Content-Type") or "").lower():
+            try:
+                data = resp.json()
+            except Exception:
+                data = None
+        if data is None:
+            try:
+                data = json.loads(body)
+            except Exception:
+                data = None
+
+        if data is not None:
+
+            def _collect(node):
+                nonlocal text, uploader, video_url
+                for key, val in node.items():
+                    lk = key.lower()
+                    if (
+                        not uploader
+                        and lk in user_keys
+                        and isinstance(val, str)
+                        and val.strip()
+                    ):
+                        uploader = val.strip()
+                    if not text and lk in text_keys:
+                        if isinstance(val, str) and val.strip():
+                            text = val.strip()
+                        elif isinstance(val, dict):
+                            inner = val.get("text") or val.get("value")
+                            if isinstance(inner, str) and inner.strip():
+                                text = inner.strip()
+                    if not video_url and lk in (
+                        "video_url",
+                        "video",
+                        "playback_url",
+                        "video_versions",
+                    ):
+                        cand = val
+                        if isinstance(cand, dict):
+                            cand = cand.get("url")
+                        elif isinstance(cand, list) and cand:
+                            first = cand[0]
+                            cand = first.get("url") if isinstance(first, dict) else first
+                        if isinstance(cand, str) and cand.startswith("http"):
+                            video_url = cand
+
+            _walk(data, _collect)
+
+            def _scan(node):
+                if isinstance(node, str):
+                    if node.startswith("http") and any(
+                        ext in node.lower() for ext in media_exts
+                    ):
+                        urls.append(node)
+                elif isinstance(node, dict):
+                    for val in node.values():
+                        _scan(val)
+                elif isinstance(node, list):
+                    for val in node:
+                        _scan(val)
+
+            _scan(data)
+        else:
+            desc = re.search(
+                r'<meta[^>]+(?:property|name)=["\']og:description["\']\s+'
+                r'content=["\']([^"\']+)["\']',
+                body,
+            )
+            if desc:
+                text = desc.group(1)
+            ogv = re.search(
+                r'<meta[^>]+(?:property|name)=["\']og:video["\']\s+'
+                r'content=["\']([^"\']+)["\']',
+                body,
+            )
+            if ogv:
+                video_url = ogv.group(1)
+            title = re.search(r"<title>([^<]+)</title>", body)
+            if title and "on Instagram" in title.group(1):
+                uploader = (
+                    title.group(1).split("on Instagram")[0].replace("•", "").strip()
+                )
+            if not uploader:
+                user_match = re.search(r'"username"\s*:\s*"([^"]+)"', body)
+                if user_match:
+                    uploader = user_match.group(1)
+            for raw in re.findall(r'https?://[^\s"\'\\<>]+', body):
+                urls.append(raw.replace("\\u0026", "&").replace("\\/", "/"))
+
+        for item in urls:
+            low = item.lower()
+            if any(
+                junk in low
+                for junk in ("profile", "avatar", "logo", "/theme/", "100x100", "150x150")
+            ):
+                continue
+            if any(ext in low for ext in (".mp4", ".mov", ".m3u8")):
+                if not video_url:
+                    video_url = item
+                continue
+            if item not in images:
+                images.append(item)
+
+        if not (text or images or video_url):
+            logger.warning("[social_parser] Instagram 中转通道未解析出有效内容")
+            return None
+        logger.info(
+            "[social_parser] Instagram 中转通道解析成功（图片"
+            f" {len(images)} 张{'，含视频直链' if video_url else ''}）"
+        )
+        return {
+            "uploader": uploader or "未知作者",
+            "text": text,
+            "images": images[:9],
+            "video_url": video_url,
+        }
+
+    def _parse_instagram_fallback(self, url: str, cookie_path: str) -> dict | None:
         match = re.search(r"/p/([^/?#\s]+)", url)
         if not match:
             match = re.search(r"/(?:reel|stories|share/p)/([^/?#\s]+)", url)
@@ -1405,10 +1641,11 @@ class SocialYtdlpMixin:
         official_cookies = self._load_cookies_to_dict(cookie_path)
         if not official_cookies:
             logger.error(
-                "[social_parser] Instagram cookies 为空！请检查"
-                f" {cookie_path} 是否存在且格式正确。"
+                "[social_parser] Instagram 未加载到登录态 Cookie，且未配置第三方"
+                "中转地址；官方通道对匿名请求一律返回 login_required"
+                f"（检查路径: {cookie_path}）"
             )
-            return {"uploader": "Cookies缺失", "text": "无法解析：Instagram cookies 未加载或已过期", "images": []}
+            return None
         csrftoken = official_cookies.get("csrftoken", "")
         base_headers = {
             "User-Agent": self.user_agent,

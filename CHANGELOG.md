@@ -21,5 +21,11 @@
 - 修复合并后 mixin 方法重名导致的解析失败：`SocialYtdlpMixin` 的 Cookie 状态检查与
   `BilibiliMixin` 的同名异步方法冲突（MRO 中后者优先），微博 / X 等 yt-dlp 链路会拿到
   协程对象并抛出 `'coroutine' object is not subscriptable`；已重命名为 `_sp_check_cookie_status`。
+- 修复 Instagram 失败时的误导性输出：未加载到登录态 Cookie 时不再返回「Cookies缺失」占位内容
+  被渲染成「解析成功」，改为明确报错并给出可操作的提示（配置第三方中转或改用登录态 Cookie）。
+- 新增 `instagram_settings.mirror_url` 可选配置：Instagram 官方通道对匿名请求一律返回
+  `login_required`，而长期挂载登录态 Cookie 又容易导致账号被封；填写第三方解析 / 中转地址后
+  （`{url}` / `{code}` 占位符），插件会在尝试 Cookie 之前优先走它，并从返回的 JSON / HTML 中
+  自动提取文案与图片、视频直链。未填写时不改变原有行为。
 - 支持分享卡片识别、文字摘要 / 渲染卡片、合并转发、表情回应、群黑白名单、
   媒体数量与最大视频体积限制、卡片渲染字体管理。

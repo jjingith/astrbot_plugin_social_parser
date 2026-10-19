@@ -179,6 +179,18 @@
             }
         }
     },
+    "instagram_settings": {
+        "description": "Instagram 设置",
+        "type": "object",
+        "items": {
+            "mirror_url": {
+                "description": "第三方解析中转地址",
+                "hint": "Instagram 对匿名请求一律返回 login_required，官方通道必须带登录态。若你有可用的第三方解析 / 中转服务，把地址填在这里，插件会在尝试 cookies 之前优先走它。地址中可用 {url}（完整帖子链接）或 {code}（帖子短码）作为占位符，例如 https://your-service/api?url={url}。留空表示不使用。",
+                "type": "string",
+                "default": ""
+            }
+        }
+    },
     "youtube_settings": {
         "description": "YouTube 设置",
         "type": "object",
