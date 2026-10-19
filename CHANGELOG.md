@@ -37,7 +37,8 @@
 
 - **B站 / 抖音 / 小红书**：沿用 `astrbot_plugin_link_resolver` 的原生解析实现
   （原项目作者 acacia，AGPL-3.0），支持多 P、画质与编码选择、无水印原图优先、Cookie 登录。
-- **微博 / X / YouTube / Instagram / TikTok**：沿用 social_parser 原有的 yt-dlp 解析链路。
+- **微博 / X / YouTube / Instagram / TikTok**：yt-dlp 解析链路由本项目作者与 AI（Grok、DeepSeek）
+  协作打磨而成。
 
 本次合并要点：
 

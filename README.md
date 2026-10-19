@@ -179,7 +179,8 @@ urllib3
 
 架构基座与 B站 / 抖音 / 小红书解析来自开源项目
 [astrbot_plugin_link_resolver](https://github.com/vacacia/astrbot_plugin_link_resolver)（作者 acacia）；
-海外平台与微博的 yt-dlp 解析链路由 social_parser 原有实现提供。
+微博 / X / YouTube / Instagram / TikTok 的 yt-dlp 解析链路，由本项目作者与 AI（Grok、DeepSeek）
+协作打磨而成。
 
 ## 免责声明
 
