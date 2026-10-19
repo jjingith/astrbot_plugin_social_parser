@@ -33,8 +33,8 @@ from .core.common.font_manager import (
 from .core.douyin import DOUYIN_MESSAGE_PATTERN, DouyinExtractor
 from .core.douyin.handler import DouyinMixin
 from .core.social import SocialYtdlpMixin
-from .core.twitter import TwitterExtractor
-from .core.weibo import WeiboExtractor
+from .core.twitter import TWITTER_MESSAGE_PATTERN, TwitterExtractor
+from .core.weibo import WEIBO_MESSAGE_PATTERN, WeiboExtractor
 from .core.xiaohongshu import (
     XHS_MESSAGE_PATTERN,
     XiaohongshuCardRenderer,
@@ -1166,6 +1166,12 @@ class SocialMediaParser(
         xhs_links = [
             link for link in unique_links if re.search(XHS_MESSAGE_PATTERN, link)
         ]
+        weibo_links = [
+            link for link in unique_links if re.search(WEIBO_MESSAGE_PATTERN, link)
+        ]
+        twitter_links = [
+            link for link in unique_links if re.search(TWITTER_MESSAGE_PATTERN, link)
+        ]
 
         if bili_links and self.bili_enabled:
             self._register_parse_task("json-bili", event)
@@ -1196,6 +1202,32 @@ class SocialMediaParser(
             try:
                 async for result in self._process_xhs(
                     event, xhs_links[0], is_from_card=True
+                ):
+                    yield result
+                return
+            except asyncio.CancelledError:
+                logger.info("♻️ JSON卡片解析任务已中断")
+                return
+
+        if weibo_links and self.weibo_enabled:
+            self._register_parse_task("json-weibo", event)
+            event.should_call_llm(True)
+            try:
+                async for result in SocialYtdlpMixin.handle_social_links(
+                    self, event, override_url=weibo_links[0]
+                ):
+                    yield result
+                return
+            except asyncio.CancelledError:
+                logger.info("♻️ JSON卡片解析任务已中断")
+                return
+
+        if twitter_links and self.twitter_enabled:
+            self._register_parse_task("json-twitter", event)
+            event.should_call_llm(True)
+            try:
+                async for result in SocialYtdlpMixin.handle_social_links(
+                    self, event, override_url=twitter_links[0]
                 ):
                     yield result
                 return

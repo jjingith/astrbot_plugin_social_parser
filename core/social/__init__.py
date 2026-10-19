@@ -57,7 +57,7 @@ class SocialYtdlpMixin:
         # 由 main.py 的 _refresh_config() 填充；未配置时为插件目录下的默认路径。
         self._sp_configured_cookies = {}
         logger.info(
-            f"[social_parser] v3.10.1 插件已加载 | FFmpeg 路径:"
+            f"[social_parser] v4.0.0 插件已加载 | FFmpeg 路径:"
             f" {self.ffmpeg_exe or '未找到'} | 代理: {self.proxy_url or '未启用'}"
         )
 
@@ -88,22 +88,30 @@ class SocialYtdlpMixin:
             return str(path)
         return str(_PLUGIN_ROOT / "cookies" / platform / "cookies.txt")
 
-    async def handle_social_links(self, event: AstrMessageEvent):
-        message_str = getattr(event, "message_str", "") or ""
-        if not self.social_pattern.search(message_str):
-            return
+    async def handle_social_links(
+        self,
+        event: AstrMessageEvent,
+        override_url: str | None = None,
+    ):
+        if override_url:
+            # 来自 JSON 卡片等场景的链接不在消息文本里，由调用方直接指定
+            url = override_url
+        else:
+            message_str = getattr(event, "message_str", "") or ""
+            if not self.social_pattern.search(message_str):
+                return
 
-        urls = re.findall(r"https?://[^\s]+", message_str)
-        if not urls:
-            return
+            urls = re.findall(r"https?://[^\s]+", message_str)
+            if not urls:
+                return
 
-        # 抖音链接交由 link_resolver 解析，这里过滤掉避免重复处理与报错
-        urls = [u for u in urls if not self.douyin_pattern.search(u)]
-        if not urls:
-            logger.debug("[social_parser] 检测到抖音链接，已交由抖音解析器处理")
-            return
+            # 抖音链接交由 link_resolver 解析，这里过滤掉避免重复处理与报错
+            urls = [u for u in urls if not self.douyin_pattern.search(u)]
+            if not urls:
+                logger.debug("[social_parser] 检测到抖音链接，已交由抖音解析器处理")
+                return
 
-        url = urls[0]
+            url = urls[0]
         logger.info(f"[social_parser] 检测到链接: {url}")
 
         local_files_to_clean = []
