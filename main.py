@@ -70,7 +70,7 @@ class SocialMediaParser(
         super().__init__(context)
         self.context = context
         self.config = config or context.get_config()
-        # social_parser 原有 yt-dlp 链路（X/YouTube/Instagram/TikTok/微博）由该 Mixin 提供，
+        # 本项目自有的 yt-dlp 链路（X/YouTube/Instagram/TikTok/微博）由该 Mixin 提供，
         # 需在 _refresh_config() 之前初始化，使 general_settings 的配置对两条链路统一生效。
         self._sp_setup()
         # 注意：必须在 _active_parse_tasks 初始化之前调用；
@@ -1115,7 +1115,7 @@ class SocialMediaParser(
 
     @filter.regex(r".*")
     async def handle_social_links(self, event: AstrMessageEvent):
-        """X/YouTube/Instagram/TikTok/微博 走 social_parser 原有的 yt-dlp 解析链路。"""
+        """X/YouTube/Instagram/TikTok/微博 走本项目自有的 yt-dlp 解析链路。"""
         async for result in SocialYtdlpMixin.handle_social_links(self, event):
             yield result
 

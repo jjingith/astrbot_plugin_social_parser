@@ -1,4 +1,4 @@
-"""social_parser 原有 yt-dlp 解析逻辑（X/YouTube/Instagram/TikTok/微博），以 Mixin 形式并入 link_resolver 架构。"""
+"""本项目自有的 yt-dlp 解析逻辑（X/YouTube/Instagram/TikTok/微博），以 Mixin 形式并入 link_resolver 架构。"""
 
 import asyncio
 import json
