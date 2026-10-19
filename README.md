@@ -34,13 +34,14 @@ AstrBot 链接解析插件：自动识别聊天中的视频 / 图文链接，下
 
 ## 安装
 
-1. 将本仓库整个目录放入 AstrBot 的插件目录，**目录名保持为 `social_parser`**：
+1. 将本仓库放入 AstrBot 的插件目录，**目录名建议与仓库名一致**：
 
    ```
-   AstrBot/data/plugins/social_parser/
+   AstrBot/data/plugins/astrbot_plugin_social_parser/
    ```
 
-   > 目录名决定了配置文件路径 `data/config/social_parser_config.json`，请勿改名。
+   > 目录名只决定插件配置文件的路径 `data/config/{目录名}_config.json`；
+   > 改成其它名字（例如 `social_parser`）也能正常运行，只是配置文件会随之改名。
 
 2. 依赖会由 AstrBot 依据 `requirements.txt` 自动安装。
 3. 安装 **FFmpeg**（音视频分离流合流 / 转码需要）：
