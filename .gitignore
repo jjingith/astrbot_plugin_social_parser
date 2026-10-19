@@ -1,0 +1,16 @@
+# 插件账号凭据，严禁提交
+cookies/
+# Python 缓存
+__pycache__/
+*.py[cod]
+# 运行期数据（字体缓存、下载缓存、日志等）
+data/
+logs/
+*.log
+# 虚拟环境
+.venv/
+venv/
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/

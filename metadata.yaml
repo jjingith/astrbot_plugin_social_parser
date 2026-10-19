@@ -1,0 +1,6 @@
+name: social_parser
+desc: B站/抖音/小红书/微博/X/YouTube/Instagram/TikTok 链接解析
+help: 监听 B站/抖音/小红书/微博/X/YouTube/Instagram/TikTok 链接，自动解析并发送视频或图片
+version: 4.0.0
+author: GrokHelper
+entry: main.py
