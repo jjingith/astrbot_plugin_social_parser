@@ -1,25 +1,45 @@
+<div align="center">
+
 # astrbot_plugin_social_parser
+
+_✨ B站 · 抖音 · 小红书 · 微博 · X · YouTube · Instagram · TikTok 链接解析 ✨_
+
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![AstrBot](https://img.shields.io/badge/AstrBot-4.16%2B-orange.svg)](https://github.com/AstrBotDevs/AstrBot)
+[![Author](https://img.shields.io/badge/作者-jjingith-blue)](https://github.com/jjingith)
+
+</div>
 
 AstrBot 链接解析插件：自动识别聊天中的视频 / 图文链接，下载后直接发送到群聊或私聊。
 
-支持 **B站 · 抖音 · 小红书 · 微博 · X (Twitter) · YouTube · Instagram · TikTok**。
-
 ---
 
-## 支持平台
+## 📖 支持能力
 
-| 平台 | 识别域名 | 解析方式 | 备注 |
-| --- | --- | --- | --- |
-| B站 | `bilibili.com`、`b23.tv` | 原生 API | 多 P 支持、画质 / 编码选择、Cookie 登录 |
-| 抖音 | `douyin.com`、`iesdouyin.com` | 原生 API | 视频 / 图集 / 动图 |
-| 小红书 | `xiaohongshu.com`、`xhslink.com` | 原生解析 | 优先无水印原图 |
-| 微博 | `weibo.com`、`weibo.cn`、`t.cn` | yt-dlp + 访客 Cookie 回退 | `t.cn` 短链自动还原 |
-| X (Twitter) | `x.com`、`twitter.com` | yt-dlp | 需可访问对应站点 |
-| YouTube | `youtube.com`、`youtu.be` | yt-dlp | 需可访问对应站点 |
-| Instagram | `instagram.com` | yt-dlp | 需可访问对应站点 |
-| TikTok | `tiktok.com` | yt-dlp | 需可访问对应站点 |
+| 平台 | 视频 | 图集 | 音频 | 触发形态 |
+| --- | --- | --- | --- | --- |
+| B站（哔哩哔哩） | ✅ | ❌ | ❌ | 链接、短链 `b23.tv`、纯文本 BV/av 号、分享卡片 |
+| 抖音 | ✅ | ✅ | ❌ | 链接、短链 `v.douyin.com`、分享卡片 |
+| 小红书 | ✅ | ✅ | ❌ | 链接、短链 `xhslink.com`、分享卡片 |
+| 微博 | ✅ | ✅ | ❌ | 链接、短链 `t.cn` |
+| X（推特） | ✅ | ✅ | ❌ | 链接 |
+| YouTube（油管） | ✅ | ❌ | ❌ | 链接、短链 `youtu.be` |
+| Instagram | ✅ | ✅ | ❌ | 链接 |
+| TikTok | ✅ | ❌ | ❌ | 链接 |
 
-> 海外平台统一走 `proxy_url` 配置的代理（留空则直连）。
+- 「图集」：一次发送多张图片，数量上限由各平台 `max_media` 配置控制。
+- 「音频」：**全平台不支持独立音频输出**——音频只作为视频的音轨，合流为 MP4 后随视频一起发送。
+
+### 解析链路
+
+| 平台 | 解析方式 | 备注 |
+| --- | --- | --- |
+| B站 / 抖音 / 小红书 | 原生 API / 原生解析 | 多 P 支持、画质与编码选择、无水印原图优先、Cookie 登录 |
+| 微博 | yt-dlp + 访客 Cookie 回退 | 未配置 Cookie 时用访客 Cookie 解析公开博文 |
+| X / YouTube / Instagram / TikTok | yt-dlp | 需可访问对应站点 |
+
+> 海外平台统一走 `proxy_url` 配置的代理（留空则直连）；TikTok 图文帖未做专门适配，当前按视频处理。
 
 ## 功能特性
 

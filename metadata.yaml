@@ -1,7 +1,7 @@
 name: astrbot_plugin_social_parser
 display_name: 社交平台链接解析
 short_desc: 自动解析 B站 / 抖音 / 小红书 / 微博 / X / YouTube / Instagram / TikTok 链接并发送视频或图片。
-desc: 监听聊天中的视频与图文链接，自动解析后发送视频、图片或渲染卡片。支持 B站（多 P、画质与编码选择）、抖音（视频 / 图集 / 动图）、小红书（无水印原图）、微博、X (Twitter)、YouTube、Instagram、TikTok；支持分享卡片识别、文字摘要或渲染卡片、合并转发、表情回应、群黑白名单、媒体数量与体积上限，以及可配置的代理与 Cookie。
+desc: 高性能链接解析插件，自动下载并发送视频与图集，支持分享卡片识别、无水印原图优先、文字摘要或渲染卡片、合并转发。支持类型：视频、图集（暂无独立音频输出）。支持平台：B站（哔哩哔哩 / Bilibili，含 av/BV 号与 b23.tv 短链）、抖音（Douyin，含 v.douyin.com 短链）、小红书（XHS，含 xhslink.com 短链）、微博（Weibo，含 t.cn 短链）、X（推特 / Twitter）、YouTube（油管 / youtu.be）、Instagram（Ins / IG）、TikTok（抖音国际版）。
 help: 无需命令，直接把视频或图文链接发到聊天里即可自动解析并发送。
 version: 4.0.0
 author: jjingith
