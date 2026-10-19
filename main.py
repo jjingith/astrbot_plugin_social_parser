@@ -19,6 +19,7 @@ from .core.bilibili import BILI_MESSAGE_PATTERN, BilibiliMixin
 from .core.common import (
     SizeLimitExceeded,
     get_bili_cookies_file,
+    get_cookies_path,
     get_youtube_cookies_file,
 )
 from .core.common.card_renderer import find_default_font, find_emoji_font
@@ -236,6 +237,16 @@ class SocialMediaParser(
         self.weibo_extractor.set_cookie(weibo_cookies_str)
         self.weibo_extractor.download_original = self.weibo_download_original
         self.weibo_cookie_enabled = self.weibo_extractor.has_user_cookie()
+        # 微博实际解析走 yt-dlp 链路，需要把配置中的 Cookie 落盘供其读取
+        self.weibo_cookies_file = None
+        if weibo_cookies_str:
+            try:
+                cookies_file = get_cookies_path() / "weibo_cookies.txt"
+                cookies_file.write_text(weibo_cookies_str, encoding="utf-8")
+                self.weibo_cookies_file = str(cookies_file)
+                logger.info("🍪 微博 Cookie 已从配置写入文件")
+            except Exception as exc:
+                logger.warning("⚠️ 写入微博 Cookie 文件失败: %s", str(exc))
 
         # X 配置
         self.twitter_max_media = max(
@@ -302,6 +313,12 @@ class SocialMediaParser(
                 logger.info("🍪 YouTube Cookie 已从配置写入文件")
             except Exception as exc:
                 logger.warning("⚠️ 写入 YouTube Cookie 文件失败: %s", str(exc))
+        # 配置面板写入的 Cookie 供 yt-dlp 链路优先使用
+        # （见 core/social 的 _sp_resolve_cookie_path）
+        self._sp_configured_cookies = {
+            "youtube": self.youtube_cookies_file,
+            "weibo": self.weibo_cookies_file,
+        }
         _youtube_client = str(
             self._get_config_value("youtube_settings.player_client", "default")
         ).strip()

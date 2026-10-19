@@ -81,7 +81,13 @@ AstrBot 链接解析插件：自动识别聊天中的视频 / 图文链接，下
 | --- | --- |
 | B站 Cookie | WebUI `bili_settings.cookies` 填写，自动写入 `data/plugin_data/social_parser/cookies/bili_cookies.txt` |
 | YouTube Cookie | WebUI `youtube_settings.cookies` 填写，自动写入 `data/plugin_data/social_parser/cookies/youtube_cookies.txt` |
-| yt-dlp 链路 Cookie | 插件目录 `cookies/<平台>/cookies.txt`（`x` / `youtube` / `weibo`） |
+| 微博 Cookie | WebUI `weibo_settings.cookies` 填写，自动写入 `data/plugin_data/social_parser/cookies/weibo_cookies.txt` |
+| 其它 yt-dlp 平台 Cookie | 手动放置到插件目录 `cookies/<平台>/cookies.txt`（`x` / `instagram` / `tiktok`） |
+
+Cookie 解析优先级（微博 / X / YouTube / Instagram / TikTok）：
+
+1. 优先使用 WebUI 配置写入数据目录的 Cookie 文件（如上表 YouTube、微博两项）；
+2. 若未配置或文件缺失，回退到插件目录 `cookies/<平台>/cookies.txt`。
 
 - 微博在没有配置 Cookie 时会先尝试生成访客 Cookie 解析公开内容。
 - 插件目录下的 `cookies/` 已在 `.gitignore` 中排除，**请勿把个人 Cookie 提交到仓库**。

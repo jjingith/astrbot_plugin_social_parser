@@ -53,6 +53,9 @@ class SocialYtdlpMixin:
         )
         self.ffmpeg_exe = self._detect_ffmpeg()
         self.max_video_size_mb = 300
+        # 配置面板写入的 Cookie 文件映射（平台 -> 数据目录下的文件路径），
+        # 由 main.py 的 _refresh_config() 填充；未配置时为插件目录下的默认路径。
+        self._sp_configured_cookies = {}
         logger.info(
             f"[social_parser] v3.10.1 插件已加载 | FFmpeg 路径:"
             f" {self.ffmpeg_exe or '未找到'} | 代理: {self.proxy_url or '未启用'}"
@@ -72,6 +75,18 @@ class SocialYtdlpMixin:
             if os.path.exists(p):
                 return p
         return "ffmpeg"
+
+    def _sp_resolve_cookie_path(self, platform: str) -> str:
+        """解析该平台要使用的 Cookie 文件路径。
+
+        优先使用配置面板写入数据目录的 Cookie 文件，未配置或文件不存在时，
+        回退到插件目录下的 cookies/<平台>/cookies.txt。
+        """
+        configured = getattr(self, "_sp_configured_cookies", None) or {}
+        path = configured.get(platform)
+        if path and Path(path).is_file():
+            return str(path)
+        return str(_PLUGIN_ROOT / "cookies" / platform / "cookies.txt")
 
     async def handle_social_links(self, event: AstrMessageEvent):
         message_str = getattr(event, "message_str", "") or ""
@@ -140,7 +155,7 @@ class SocialYtdlpMixin:
 
             cookie_path = None
             if platform:
-                cookie_path = str(_PLUGIN_ROOT / "cookies" / platform / "cookies.txt")
+                cookie_path = self._sp_resolve_cookie_path(platform)
                 cookie_status = self._check_cookie_status(cookie_path)
                 if cookie_status["exists"]:
                     if cookie_status["expired"]:
