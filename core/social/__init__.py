@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import math
 import os
 import re
 import shutil
@@ -249,16 +250,23 @@ class SocialYtdlpMixin:
                     if need_vx:
                         logger.info(
                             "[social_parser] Syndication 数据不完整，"
-                            "切入 vxtwitter 深度解密节点..."
+                            "切入 fxtwitter 深度解密节点..."
                         )
                         vx_data = await asyncio.to_thread(
-                            self._parse_vxtwitter_fallback, tweet_id
+                            self._parse_fxtwitter_fallback, tweet_id
                         )
                         if vx_data:
                             if not tweet_data:
                                 tweet_data = vx_data
                             else:
-                                for k in ("text", "video_url", "user"):
+                                for k in (
+                                    "text",
+                                    "video_url",
+                                    "user",
+                                    "duration",
+                                    "width",
+                                    "height",
+                                ):
                                     if not tweet_data.get(k) and vx_data.get(k):
                                         tweet_data[k] = vx_data[k]
                                 existing = tweet_data.get("photos") or []
@@ -472,7 +480,9 @@ class SocialYtdlpMixin:
                         download_info = {
                             "title": text_content[:30],
                             "uploader": uploader,
-                            "duration": 0,
+                            "duration": tweet_data.get("duration") or 0,
+                            "width": tweet_data.get("width"),
+                            "height": tweet_data.get("height"),
                         }
                     elif platform == "douyin" and douyin_data and douyin_data.get("video_url"):
                         local_file_path = await asyncio.to_thread(
@@ -1279,7 +1289,12 @@ class SocialYtdlpMixin:
         return match.group(1) if match else None
 
     def _parse_twitter_syndication(self, tweet_id: str) -> dict:
-        url = f"https://cdn.syndication.twimg.com/tweet-result?id={tweet_id}&lang=zh"
+        # X 要求在 id 之外附带 token，缺失时该接口只返回 {} / tweet tombstone。
+        token = f"{(int(tweet_id) / 1e15) * math.pi}".replace(".", "")[:18]
+        url = (
+            f"https://cdn.syndication.twimg.com/tweet-result"
+            f"?id={tweet_id}&token={token}&lang=zh"
+        )
         headers = {"User-Agent": self.user_agent, "Accept": "application/json"}
         proxies = (
             {"http": self.proxy_url, "https": self.proxy_url}
@@ -1382,58 +1397,120 @@ class SocialYtdlpMixin:
             "video_url": video_url,
         }
 
-    def _parse_vxtwitter_fallback(self, tweet_id: str) -> dict:
-        url = f"https://api.vxtwitter.com/status/{tweet_id}"
+    def _parse_fxtwitter_fallback(self, tweet_id: str) -> dict:
+        """第三方 X 解析节点兜底。
+
+        优先 api.fxtwitter.com（v2 结构），失败时回退 api.vxtwitter.com（旧结构）。
+        注意 api.vxtwitter.com 现在经常被 Cloudflare 拦截返回 403，因此以 fxtwitter 为主。
+        """
         headers = {"User-Agent": self.user_agent, "Accept": "application/json"}
         proxies = (
             {"http": self.proxy_url, "https": self.proxy_url}
             if self.proxy_url else None
         )
-        try:
-            resp = requests.get(url, headers=headers, proxies=proxies, timeout=12, verify=False)
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-        except Exception as e:
-            logger.warning(f"[social_parser] vxtwitter 深度解密节点请求失败: {e}")
+        data = None
+        for api in ("https://api.fxtwitter.com", "https://api.vxtwitter.com"):
+            try:
+                resp = requests.get(
+                    f"{api}/status/{tweet_id}",
+                    headers=headers,
+                    proxies=proxies,
+                    timeout=12,
+                    verify=False,
+                )
+                if resp.status_code != 200:
+                    logger.warning(
+                        f"[social_parser] {api} 返回 HTTP {resp.status_code}，尝试下一个节点"
+                    )
+                    continue
+                payload = resp.json()
+            except Exception as e:
+                logger.warning(f"[social_parser] {api} 节点请求失败: {e}")
+                continue
+            if isinstance(payload, dict) and (
+                payload.get("tweet") or payload.get("text") or payload.get("mediaURLs")
+            ):
+                data = payload
+                break
+
+        if not data:
             return None
 
-        media_urls = data.get("mediaURLs") or data.get("media_urls") or []
         photos = []
         video_url = None
-        seen = set()
-        for u in media_urls:
-            if not u or u in seen:
-                continue
-            seen.add(u)
-            low = u.lower().split("?")[0]
-            if low.endswith((".mp4", ".webm", ".mov", ".m3u8")):
-                if not video_url:
-                    video_url = u
-            else:
-                photos.append({"url": u})
+        duration = 0
+        width = None
+        height = None
+        tweet = data.get("tweet")
+        if isinstance(tweet, dict):
+            # fxtwitter v2 结构：media.photos / media.videos
+            media = tweet.get("media") or {}
+            for p in media.get("photos") or []:
+                u = p.get("url") if isinstance(p, dict) else None
+                if u:
+                    photos.append({"url": u})
+            for v in media.get("videos") or []:
+                if not isinstance(v, dict):
+                    continue
+                best = None
+                best_br = -1
+                for var in v.get("variants") or []:
+                    if var.get("content_type") == "video/mp4" and var.get("url"):
+                        br = int(var.get("bitrate") or 0)
+                        if br > best_br:
+                            best_br = br
+                            best = var["url"]
+                candidate = v.get("url") or best
+                if candidate and not video_url:
+                    video_url = candidate
+                    duration = int(v.get("duration") or 0)
+                    width = v.get("width")
+                    height = v.get("height")
+            author = tweet.get("author") or {}
+            uploader = author.get("name") or author.get("screen_name") or ""
+            text = tweet.get("text") or tweet.get("raw_text") or ""
+        else:
+            # 旧 vxtwitter 结构：mediaURLs / media_extended
+            media_urls = data.get("mediaURLs") or data.get("media_urls") or []
+            seen = set()
+            for u in media_urls:
+                if not u or u in seen:
+                    continue
+                seen.add(u)
+                low = u.lower().split("?")[0]
+                if low.endswith((".mp4", ".webm", ".mov", ".m3u8")):
+                    if not video_url:
+                        video_url = u
+                else:
+                    photos.append({"url": u})
 
-        for m in data.get("media_extended") or []:
-            if not isinstance(m, dict):
-                continue
-            m_type = (m.get("type") or "").lower()
-            m_url = m.get("url")
-            if not m_url or m_url in seen:
-                continue
-            seen.add(m_url)
-            if m_type in ("video", "gif"):
-                if not video_url:
-                    video_url = m_url
-            else:
-                photos.append({"url": m_url})
+            for m in data.get("media_extended") or []:
+                if not isinstance(m, dict):
+                    continue
+                m_type = (m.get("type") or "").lower()
+                m_url = m.get("url")
+                if not m_url or m_url in seen:
+                    continue
+                seen.add(m_url)
+                if m_type in ("video", "gif"):
+                    if not video_url:
+                        video_url = m_url
+                        duration = int(m.get("duration") or 0)
+                        width = m.get("width")
+                        height = m.get("height")
+                else:
+                    photos.append({"url": m_url})
+            uploader = data.get("user_name") or data.get("user_screen_name") or ""
+            text = data.get("text", "")
 
         return {
-            "user": {
-                "name": data.get("user_name") or data.get("user_screen_name") or "未知作者",
-            },
-            "text": data.get("text", ""),
+            "user": {"name": uploader or "未知作者"},
+            "text": text,
             "photos": photos,
             "video_url": video_url,
+            "duration": duration,
+            "width": width,
+            "height": height,
         }
 
     # ========== Instagram 备用解析 ==========

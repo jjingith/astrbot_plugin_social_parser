@@ -27,6 +27,13 @@
   `login_required`，而长期挂载登录态 Cookie 又容易导致账号被封；填写第三方解析 / 中转地址后
   （`{url}` / `{code}` 占位符），插件会在尝试 Cookie 之前优先走它，并从返回的 JSON / HTML 中
   自动提取文案与图片、视频直链。未填写时不改变原有行为。
+- 修复 X 纯图片推文 / 敏感内容推文解析不出内容：
+  - `cdn.syndication.twimg.com/tweet-result` 需要附带由推文 id 推导的 `token`，
+    缺失时接口只返回空对象或 tweet tombstone，导致只有文字、没有媒体；
+  - 第三方兜底节点从 `api.vxtwitter.com`（已被 Cloudflare 拦截返回 403）改为
+    `api.fxtwitter.com`（v2 结构），并保留旧结构的兜底解析。
+- X 视频的时长 / 分辨率改为优先读取第三方节点返回的 `duration` / `width` / `height`，
+  不再固定为 `0`（缺失时仍由 ffmpeg 探测兜底）。
 - 修复时长 / 分辨率显示不对：Instagram 等平台的 yt-dlp 元数据与直链下载通道都不带回
   `duration` / `width` / `height`，原先统一显示为「00:00 / 未知」；现在视频下载完成后会用
   ffmpeg 对实际文件探测一次，缺失时补全这两个字段。
