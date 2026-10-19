@@ -4,7 +4,7 @@ short_desc: 自动解析 B站 / 抖音 / 小红书 / 微博 / X / YouTube / Inst
 desc: 监听聊天中的视频与图文链接，自动解析后发送视频、图片或渲染卡片。支持 B站（多 P、画质与编码选择）、抖音（视频 / 图集 / 动图）、小红书（无水印原图）、微博、X (Twitter)、YouTube、Instagram、TikTok；支持分享卡片识别、文字摘要或渲染卡片、合并转发、表情回应、群黑白名单、媒体数量与体积上限，以及可配置的代理与 Cookie。
 help: 无需命令，直接把视频或图文链接发到聊天里即可自动解析并发送。
 version: 4.0.0
-author: GrokHelper
+author: jjingith
 repo: https://github.com/jjingith/astrbot_plugin_social_parser
 astrbot_version: ">=4.16,<5"
 support_platforms:
