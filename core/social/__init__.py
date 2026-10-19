@@ -62,7 +62,7 @@ class SocialYtdlpMixin:
         # Instagram 可选第三方解析中转地址，由 main.py 的 _refresh_config() 填充。
         self.ig_mirror_url = ""
         logger.info(
-            f"[social_parser] v4.0.0 插件已加载 | FFmpeg 路径:"
+            f"[social_parser] v4.0.1 插件已加载 | FFmpeg 路径:"
             f" {self.ffmpeg_exe or '未找到'} | 代理: {self.proxy_url or '未启用'}"
         )
 
