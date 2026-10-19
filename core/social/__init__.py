@@ -164,7 +164,7 @@ class SocialYtdlpMixin:
             cookie_path = None
             if platform:
                 cookie_path = self._sp_resolve_cookie_path(platform)
-                cookie_status = self._check_cookie_status(cookie_path)
+                cookie_status = self._sp_check_cookie_status(cookie_path)
                 if cookie_status["exists"]:
                     if cookie_status["expired"]:
                         cookie_warn_msg = (
@@ -1589,7 +1589,7 @@ class SocialYtdlpMixin:
         with YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False)
 
-    def _check_cookie_status(self, cookie_path: str) -> dict:
+    def _sp_check_cookie_status(self, cookie_path: str) -> dict:
         status = {"exists": False, "expired": False, "expired_count": 0, "total_count": 0}
         if not cookie_path or not os.path.exists(cookie_path):
             return status

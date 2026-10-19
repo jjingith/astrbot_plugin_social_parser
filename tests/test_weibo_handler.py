@@ -1,4 +1,4 @@
-﻿# ruff: noqa: E402
+# ruff: noqa: E402
 """Integration-style tests for Weibo handler entrypoints.
 
 Run inside AstrBot container:
@@ -14,7 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 for candidate in Path(__file__).resolve().parents:
     if (candidate / "data" / "plugins").exists():
@@ -24,6 +24,7 @@ for candidate in Path(__file__).resolve().parents:
         break
 
 from astrbot.api.message_components import Video
+from data.plugins.social_parser.core.social import SocialYtdlpMixin
 from data.plugins.social_parser.core.weibo import WeiboResult
 from data.plugins.social_parser.core.weibo.handler import WeiboMixin
 from data.plugins.social_parser.main import LinkResolver
@@ -99,11 +100,11 @@ class TestWeiboHandler(unittest.IsolatedAsyncioTestCase):
         plugin.douyin_enabled = False
         plugin.xhs_enabled = False
         plugin.weibo_enabled = True
+        plugin.twitter_enabled = False
         plugin.group_filter_mode = "黑名单"
         plugin.group_filter_list = []
         plugin._register_parse_task = lambda *args, **kwargs: None
         plugin._is_bot_muted = AsyncMock(return_value=False)
-        plugin._process_weibo = AsyncMock()
         plugin.extract_links_from_json = LinkResolver.extract_links_from_json.__get__(
             plugin, LinkResolver
         )
@@ -111,11 +112,21 @@ class TestWeiboHandler(unittest.IsolatedAsyncioTestCase):
             plugin, LinkResolver
         )
 
-        async for _ in LinkResolver.handle_json_card(plugin, event):
-            pass
+        calls: list[tuple] = []
 
-        plugin._process_weibo.assert_awaited_once_with(
-            event, "https://weibo.com/1234567890/AbCdEfGhI", is_from_card=True
+        async def _fake_handle_social_links(_self, _event, override_url=None):
+            calls.append((_event, override_url))
+            if False:  # pragma: no cover - 仅为使其成为异步生成器
+                yield
+
+        with patch.object(
+            SocialYtdlpMixin, "handle_social_links", _fake_handle_social_links
+        ):
+            async for _ in LinkResolver.handle_json_card(plugin, event):
+                pass
+
+        self.assertEqual(
+            calls, [(event, "https://weibo.com/1234567890/AbCdEfGhI")]
         )
         self.assertTrue(event._llm)
 

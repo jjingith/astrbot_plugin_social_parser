@@ -1,4 +1,4 @@
-﻿# ruff: noqa: E402
+# ruff: noqa: E402
 """Integration-style tests for Twitter/X handler entrypoints.
 
 Run inside AstrBot container:
@@ -14,7 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 for candidate in Path(__file__).resolve().parents:
     if (candidate / "data" / "plugins").exists():
@@ -24,6 +24,7 @@ for candidate in Path(__file__).resolve().parents:
         break
 
 from astrbot.api.message_components import Plain, Video
+from data.plugins.social_parser.core.social import SocialYtdlpMixin
 from data.plugins.social_parser.core.twitter import TwitterResult
 from data.plugins.social_parser.core.twitter.handler import TwitterMixin
 from data.plugins.social_parser.main import LinkResolver
@@ -341,7 +342,6 @@ class TestTwitterHandler(unittest.IsolatedAsyncioTestCase):
         plugin.group_filter_list = []
         plugin._register_parse_task = lambda *args, **kwargs: None
         plugin._is_bot_muted = AsyncMock(return_value=False)
-        plugin._process_twitter = AsyncMock()
         plugin.extract_links_from_json = LinkResolver.extract_links_from_json.__get__(
             plugin, LinkResolver
         )
@@ -349,11 +349,21 @@ class TestTwitterHandler(unittest.IsolatedAsyncioTestCase):
             plugin, LinkResolver
         )
 
-        async for _ in LinkResolver.handle_json_card(plugin, event):
-            pass
+        calls: list[tuple] = []
 
-        plugin._process_twitter.assert_awaited_once_with(
-            event, "https://x.com/demo/status/1234567890123456789", is_from_card=True
+        async def _fake_handle_social_links(_self, _event, override_url=None):
+            calls.append((_event, override_url))
+            if False:  # pragma: no cover - 仅为使其成为异步生成器
+                yield
+
+        with patch.object(
+            SocialYtdlpMixin, "handle_social_links", _fake_handle_social_links
+        ):
+            async for _ in LinkResolver.handle_json_card(plugin, event):
+                pass
+
+        self.assertEqual(
+            calls, [(event, "https://x.com/demo/status/1234567890123456789")]
         )
         self.assertTrue(event._llm)
 
