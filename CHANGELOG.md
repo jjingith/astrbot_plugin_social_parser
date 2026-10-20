@@ -1,5 +1,15 @@
 # 更新日志
 
+## v4.0.3
+
+- 修复 X 图集把 `t.co` 短链当成图片下载、导致客户端发送失败的问题：
+  syndication 的 `mediaDetails` 里 `url` 字段是 `t.co` 短链（指向 HTML 页面），
+  真正的图片地址在 `media_url_https`；现已改为优先取 `media_url_https` 并过滤 `t.co` 链接，
+  同时对同一张图去重，避免同一张图被重复下载发送。
+- 图片下载增加有效性校验：响应 `Content-Type` 非 `image/*` 时直接跳过；
+  文件体积过小或文件头不是 JPEG / PNG / GIF / WebP 魔数的一律丢弃并清理临时文件，
+  不再把网页或损坏文件当成图片发给客户端（此前会导致 QQ「rich media transfer failed」）。
+
 ## v4.0.2
 
 - 修复国内环境下 X（Twitter）视频直链下载失败的问题：`video.twimg.com` 直连会被重置

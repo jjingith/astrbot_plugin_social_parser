@@ -1,4 +1,4 @@
-# region 导入
+﻿# region 导入
 import asyncio
 import hashlib
 import json
@@ -57,7 +57,7 @@ SUMMARY_MODE_CARD = "渲染卡片"
     "astrbot_plugin_social_parser",
     "jjingith",
     "解析 & 下载 B站/抖音/小红书/微博/X/YouTube/Instagram/TikTok",
-    "4.0.2",
+    "4.0.3",
 )
 class SocialMediaParser(
     BilibiliMixin,

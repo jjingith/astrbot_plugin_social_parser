@@ -1,4 +1,4 @@
-"""本项目自有的 yt-dlp 解析逻辑（X/YouTube/Instagram/TikTok/微博），以 Mixin 形式并入 link_resolver 架构。"""
+﻿"""本项目自有的 yt-dlp 解析逻辑（X/YouTube/Instagram/TikTok/微博），以 Mixin 形式并入 link_resolver 架构。"""
 
 import asyncio
 import json
@@ -62,7 +62,7 @@ class SocialYtdlpMixin:
         # Instagram 可选第三方解析中转地址，由 main.py 的 _refresh_config() 填充。
         self.ig_mirror_url = ""
         logger.info(
-            f"[social_parser] v4.0.2 插件已加载 | FFmpeg 路径:"
+            f"[social_parser] v4.0.3 插件已加载 | FFmpeg 路径:"
             f" {self.ffmpeg_exe or '未找到'} | 代理: {self.proxy_url or '未启用'}"
         )
 
@@ -1325,6 +1325,7 @@ class SocialYtdlpMixin:
         def _collect_media(node):
             """从一个 tweet 节点收集图片 URL 列表和视频 URL"""
             photos = []
+            seen_photo_urls = set()
             video_url = None
             if not isinstance(node, dict):
                 return photos, video_url
@@ -1350,12 +1351,23 @@ class SocialYtdlpMixin:
                         if best and not video_url:
                             video_url = best
                         continue
-                    u = m.get("url") or m.get("media_url_https") or m.get("media_url")
-                    if u and not any(
-                        u.lower().split("?")[0].endswith(ext)
-                        for ext in (".mp4", ".webm", ".mov", ".m3u8")
+                    # mediaDetails 里的 url 是 t.co 短链（指向 HTML 页面），
+                    # 真正的图片地址在 media_url_https，必须优先取它。
+                    u = (
+                        m.get("media_url_https")
+                        or m.get("media_url")
+                        or m.get("url")
+                    )
+                    if not u or "t.co/" in u:
+                        continue
+                    if u.lower().split("?")[0].endswith(
+                        (".mp4", ".webm", ".mov", ".m3u8")
                     ):
-                        photos.append({"url": u})
+                        continue
+                    if u in seen_photo_urls:
+                        continue
+                    seen_photo_urls.add(u)
+                    photos.append({"url": u})
 
             if not video_url and isinstance(node.get("video"), dict):
                 variants = node["video"].get("variants") or []
@@ -1903,7 +1915,7 @@ class SocialYtdlpMixin:
         logger.error("[social_parser] 所有 Instagram 解析节点均失败，请检查 cookies 和代理设置。")
         return None
 
-    def _download_image(self, url: str) -> str:
+    def _download_image(self, url: str) -> str | None:
         referer = (
             "https://weibo.com/"
             if "weibo" in url.lower() or "sinaimg" in url.lower()
@@ -1926,6 +1938,13 @@ class SocialYtdlpMixin:
         resp = requests.get(url, headers=headers, proxies=proxies, timeout=20, verify=False)
         resp.raise_for_status()
         content_type = resp.headers.get("Content-Type", "").lower()
+        if not content_type.startswith("image/"):
+            # 短链 / 失效地址会返回 HTML、JSON 等非图片内容，
+            # 直接丢弃，避免把网页当成图片发给客户端（QQ 会报 rich media transfer failed）。
+            logger.warning(
+                f"[social_parser] 跳过非图片响应 ({content_type or '未知类型'}): {url}"
+            )
+            return None
         if "png" in content_type:
             suffix = ".png"
         elif "gif" in content_type:
@@ -1938,9 +1957,33 @@ class SocialYtdlpMixin:
         with open(tmp_file.name, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
                 f.write(chunk)
-        if os.path.exists(tmp_file.name) and os.path.getsize(tmp_file.name) < 1024:
-            logger.warning(f"[social_parser] 警告：下载的素材体积异常小 ({os.path.getsize(tmp_file.name)} 字节)")
+        size = os.path.getsize(tmp_file.name)
+        if size < 1024 or not self._sp_is_valid_image(tmp_file.name):
+            logger.warning(f"[social_parser] 丢弃无效图片 ({size} 字节): {url}")
+            try:
+                os.remove(tmp_file.name)
+            except OSError:
+                pass
+            return None
         return tmp_file.name
+
+    @staticmethod
+    def _sp_is_valid_image(path: str) -> bool:
+        """通过文件头魔数判断是否为真实图片（不依赖 Pillow）。"""
+        try:
+            with open(path, "rb") as f:
+                head = f.read(12)
+        except OSError:
+            return False
+        if head.startswith(b"\xff\xd8\xff"):  # JPEG
+            return True
+        if head.startswith(b"\x89PNG\r\n\x1a\n"):  # PNG
+            return True
+        if head.startswith((b"GIF87a", b"GIF89a")):  # GIF
+            return True
+        if head[:4] == b"RIFF" and head[8:12] == b"WEBP":  # WebP
+            return True
+        return False
 
     def _extract_info(self, url: str, opts: dict) -> dict:
         opts = dict(opts)
