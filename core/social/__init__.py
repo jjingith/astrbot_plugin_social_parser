@@ -472,10 +472,7 @@ class SocialYtdlpMixin:
                         }
                     elif platform == "x" and tweet_data and tweet_data.get("video_url"):
                         local_file_path = await asyncio.to_thread(
-                            self._download_direct_file,
-                            tweet_data["video_url"],
-                            ".mp4",
-                            "https://x.com/",
+                            self._sp_download_x_video, tweet_data["video_url"]
                         )
                         download_info = {
                             "title": text_content[:30],
@@ -1253,6 +1250,30 @@ class SocialYtdlpMixin:
             raise Exception("直链视频下载失败或文件体积异常")
 
         return out_path
+
+    def _sp_download_x_video(self, url: str) -> str:
+        """X（Twitter）视频直链下载。
+
+        video.twimg.com 会按来源 IP 主动断连（ConnectionResetError 10054），
+        直连偶发被重置时先重试一次，仍失败且配置了代理则改用代理；
+        全部失败时抛出最后一次异常，交由上层回退为图文 + 失败提示。
+        """
+        attempts = (False, False, True)  # 直连重试一次，再走代理
+        last_err = None
+        for use_proxy in attempts:
+            if use_proxy and not self.proxy_url:
+                continue
+            try:
+                if use_proxy:
+                    logger.info("[social_parser] X 视频直连失败，改用代理重试...")
+                return self._download_direct_file(
+                    url, ".mp4", "https://x.com/", use_proxy
+                )
+            except Exception as e:
+                last_err = e
+        if last_err:
+            raise last_err
+        raise Exception("X 视频下载失败")
 
     def _ffmpeg_merge_smart(self, video_file: str, audio_file: str, output: str):
         ffmpeg_cmd = self.ffmpeg_exe or "ffmpeg"
