@@ -62,7 +62,7 @@ class SocialYtdlpMixin:
         # Instagram 可选第三方解析中转地址，由 main.py 的 _refresh_config() 填充。
         self.ig_mirror_url = ""
         logger.info(
-            f"[social_parser] v4.0.1 插件已加载 | FFmpeg 路径:"
+            f"[social_parser] v4.0.2 插件已加载 | FFmpeg 路径:"
             f" {self.ffmpeg_exe or '未找到'} | 代理: {self.proxy_url or '未启用'}"
         )
 
@@ -1254,26 +1254,19 @@ class SocialYtdlpMixin:
     def _sp_download_x_video(self, url: str) -> str:
         """X（Twitter）视频直链下载。
 
-        video.twimg.com 会按来源 IP 主动断连（ConnectionResetError 10054），
-        直连偶发被重置时先重试一次，仍失败且配置了代理则改用代理；
-        全部失败时抛出最后一次异常，交由上层回退为图文 + 失败提示。
+        部署环境在国内，video.twimg.com 直连会被重置（ConnectionResetError 10054），
+        因此只要配置了代理就优先走代理；仅在未配置代理时才直连。
         """
-        attempts = (False, False, True)  # 直连重试一次，再走代理
-        last_err = None
-        for use_proxy in attempts:
-            if use_proxy and not self.proxy_url:
-                continue
+        if self.proxy_url:
             try:
-                if use_proxy:
-                    logger.info("[social_parser] X 视频直连失败，改用代理重试...")
                 return self._download_direct_file(
-                    url, ".mp4", "https://x.com/", use_proxy
+                    url, ".mp4", "https://x.com/", True
                 )
             except Exception as e:
-                last_err = e
-        if last_err:
-            raise last_err
-        raise Exception("X 视频下载失败")
+                logger.warning(
+                    f"[social_parser] X 视频经代理下载失败，改用直连重试: {e}"
+                )
+        return self._download_direct_file(url, ".mp4", "https://x.com/")
 
     def _ffmpeg_merge_smart(self, video_file: str, audio_file: str, output: str):
         ffmpeg_cmd = self.ffmpeg_exe or "ffmpeg"
